@@ -19,8 +19,10 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # e.g., https://your-domain.com
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # e.g., https://your-domain.com or https://1.2.3.4:8443
 WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8443"))
+WEBHOOK_SSL_CERT = os.getenv("WEBHOOK_SSL_CERT")  # Path to SSL certificate (cert.pem)
+WEBHOOK_SSL_KEY = os.getenv("WEBHOOK_SSL_KEY")  # Path to SSL private key (private.key)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -96,13 +98,26 @@ def run_webhook():
     
     application = create_application()
     
+    webhook_kwargs = {
+        "listen": "0.0.0.0",
+        "port": WEBHOOK_PORT,
+        "url_path": TELEGRAM_BOT_TOKEN,
+        "webhook_url": f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}",
+    }
+    
+    # Add SSL certificate and key if provided (required for self-signed certs / direct HTTPS)
+    if WEBHOOK_SSL_CERT and WEBHOOK_SSL_KEY:
+        webhook_kwargs["cert"] = WEBHOOK_SSL_CERT
+        webhook_kwargs["key"] = WEBHOOK_SSL_KEY
+        logger.info(f"Using SSL cert: {WEBHOOK_SSL_CERT}, key: {WEBHOOK_SSL_KEY}")
+    else:
+        logger.warning(
+            "No SSL cert/key provided. The bot will serve plain HTTP. "
+            "Make sure a reverse proxy handles TLS termination."
+        )
+    
     # Run with webhook
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=WEBHOOK_PORT,
-        url_path=TELEGRAM_BOT_TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}",
-    )
+    application.run_webhook(**webhook_kwargs)
 
 
 def run_polling():
