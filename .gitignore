@@ -1,1 +1,5 @@
+# Ignore environment files with secrets
 .env
+
+# But allow .env.example to be tracked (as a template)
+!.env.example
