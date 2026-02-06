@@ -4,7 +4,8 @@ from agno.agent import Agent
 from agno.models.deepseek import DeepSeek
 from agno.utils.pprint import pprint_run_response
 from agno.run.agent import RunOutput
-
+from dotenv import load_dotenv
+load_dotenv()
 
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
