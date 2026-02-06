@@ -1,9 +1,12 @@
 """Telegram bot for language checking using AI agent."""
 
+import html
 import logging
 import os
+import re
 
 from telegram import Update
+from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 from main import process_text
@@ -23,6 +26,40 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # e.g., https://your-domain.com or https
 WEBHOOK_PORT = int(os.getenv("WEBHOOK_PORT", "8443"))
 WEBHOOK_SSL_CERT = os.getenv("WEBHOOK_SSL_CERT")  # Path to SSL certificate (cert.pem)
 WEBHOOK_SSL_KEY = os.getenv("WEBHOOK_SSL_KEY")  # Path to SSL private key (private.key)
+
+
+def markdown_to_telegram_html(text: str) -> str:
+    """Convert standard markdown to Telegram-compatible HTML.
+
+    Handles bold, italic, strikethrough, code blocks, inline code, and links.
+    Falls back gracefully — any unsupported syntax is left as plain text.
+    """
+    # Escape HTML special chars first so we don't break tags we insert later
+    text = html.escape(text)
+
+    # Fenced code blocks: ```lang\n...\n``` → <pre>...</pre>
+    text = re.sub(
+        r"```(?:\w*)\n(.*?)```", r"<pre>\1</pre>", text, flags=re.DOTALL
+    )
+
+    # Inline code: `...` → <code>...</code>
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+
+    # Bold: **text** or __text__  →  <b>text</b>
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"__(.+?)__", r"<b>\1</b>", text)
+
+    # Italic: *text* or _text_  →  <i>text</i>
+    text = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text)
+    text = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"<i>\1</i>", text)
+
+    # Strikethrough: ~~text~~ → <s>text</s>
+    text = re.sub(r"~~(.+?)~~", r"<s>\1</s>", text)
+
+    # Markdown links: [text](url) → <a href="url">text</a>
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
+
+    return text
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -60,7 +97,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         # Process the text using the AI agent
         response = process_text(user_text)
-        await update.message.reply_text(response)
+
+        # Convert markdown to Telegram HTML and send formatted message
+        try:
+            formatted = markdown_to_telegram_html(response)
+            await update.message.reply_text(formatted, parse_mode=ParseMode.HTML)
+        except Exception:
+            # If HTML parsing fails, fall back to plain text
+            logger.warning("Failed to send formatted message, falling back to plain text")
+            await update.message.reply_text(response)
     except Exception as e:
         logger.error(f"Error processing message: {e}")
         await update.message.reply_text(
